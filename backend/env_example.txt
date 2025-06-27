@@ -1,0 +1,10 @@
+# Configuration OpenAI pour l'extraction DCE
+OPENAI_API_KEY=sk-proj-your-openai-api-key-here
+
+# Configuration JWT (optionnel)
+SECRET_KEY=your_secret_key_here
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Configuration base de données (optionnel)
+DATABASE_URL=sqlite:///./app.db 
