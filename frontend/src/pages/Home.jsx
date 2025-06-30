@@ -10,11 +10,11 @@ function Home() {
         <div className="text-center">
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
             Bienvenue sur
-            <span className="text-primary-600"> AuthApp</span>
+            <span className="text-primary-600"> CYBEFORM</span>
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            Une application d'authentification moderne construite avec FastAPI et React.
-            Sécurisée, rapide et facile à utiliser.
+            Plateforme d'analyse intelligente de documents DCE. 
+            Extraction automatique, analyse IA et gestion sécurisée.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -48,26 +48,26 @@ function Home() {
 
         <div className="mt-20 grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-white p-6 rounded-xl shadow-lg">
-            <div className="text-3xl mb-4">🔒</div>
-            <h3 className="text-xl font-semibold mb-2">Security First</h3>
+            <div className="text-3xl mb-4">🤖</div>
+            <h3 className="text-xl font-semibold mb-2">Intelligence Artificielle</h3>
             <p className="text-gray-600">
-              Authentification JWT sécurisée avec hachage des mots de passe
+              Extraction DCE automatique avec OpenAI GPT-4o
+            </p>
+          </div>
+          
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <div className="text-3xl mb-4">📊</div>
+            <h3 className="text-xl font-semibold mb-2">Analyse Avancée</h3>
+            <p className="text-gray-600">
+              Matériaux, quantitatifs, méthodes d'exécution détectés automatiquement
             </p>
           </div>
           
           <div className="bg-white p-6 rounded-xl shadow-lg">
             <div className="text-3xl mb-4">⚡</div>
-            <h3 className="text-xl font-semibold mb-2">Performance</h3>
+            <h3 className="text-xl font-semibold mb-2">Temps Réel</h3>
             <p className="text-gray-600">
-              API FastAPI rapide avec React optimisé par Vite
-            </p>
-          </div>
-          
-          <div className="bg-white p-6 rounded-xl shadow-lg">
-            <div className="text-3xl mb-4">🎨</div>
-            <h3 className="text-xl font-semibold mb-2">Design Moderne</h3>
-            <p className="text-gray-600">
-              Interface utilisateur élégante avec Tailwind CSS
+              Progression WebSocket et interface moderne avec Tailwind CSS
             </p>
           </div>
         </div>

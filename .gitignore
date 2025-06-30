@@ -63,9 +63,31 @@ pids/
 *.seed
 *.pid.lock
 
-# Environment variables
+# Environment variables (IMPORTANT!)
 .env
 .env.local
 .env.development.local
 .env.test.local
-.env.production.local 
+.env.production.local
+backend/.env
+frontend/.env
+
+# Uploads et fichiers temporaires
+backend/uploads/
+backend/test_*.py
+backend/temp/
+
+# Environnements de test
+test_env/
+test-env/
+.venv/
+
+# Secrets et clés API
+*.key
+*.pem
+secrets.txt
+api_keys.txt
+
+# OS
+.DS_Store
+Thumbs.db 

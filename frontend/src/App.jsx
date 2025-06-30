@@ -13,6 +13,8 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Upload from './pages/Upload';
 import Extractions from './pages/Extractions';
+import QAInterface from './components/QAInterface';
+import QAHistory from './components/QAHistory';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -90,6 +92,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <Extractions />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/qa" 
+            element={
+              <ProtectedRoute>
+                <QAInterface />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/qa/history" 
+            element={
+              <ProtectedRoute>
+                <QAHistory />
               </ProtectedRoute>
             } 
           />

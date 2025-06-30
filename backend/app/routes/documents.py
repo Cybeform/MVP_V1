@@ -1,14 +1,18 @@
 import os
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth
 from ..database import get_db
 from ..text_extraction import extract_text_from_file, get_text_preview
 from ..dce_extraction import extract_dce_info_from_text_async, validate_extraction, websocket_manager
+from ..cctp_chunking import process_cctp_document, get_document_chunks, get_chunks_by_lot, search_chunks_by_content
+from ..embeddings import get_embedding_stats, search_similar_chunks, process_batch_embeddings
+from ..embedding_jobs import schedule_embedding_job, get_embedding_job_status, check_embedding_requirements
 from ..models import ExtractionStatus
+from ..cache_service import redis_cache
 from sqlalchemy import func
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -104,6 +108,22 @@ async def process_dce_extraction_async(document_id: int, text: str, db: Session,
                 "document_id": document_id
             })
 
+def process_cctp_chunks_background(document_id: int, text: str, db: Session):
+    """
+    Traite le découpage CCTP en arrière-plan
+    """
+    try:
+        print(f"Début du découpage CCTP pour le document {document_id}")
+        
+        # Traiter le document pour créer les chunks
+        chunks = process_cctp_document(text, document_id, db)
+        
+        print(f"Découpage CCTP terminé: {len(chunks)} chunks créés pour le document {document_id}")
+        
+    except Exception as e:
+        error_msg = f"Erreur lors du découpage CCTP pour le document {document_id}: {e}"
+        print(error_msg)
+
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """Endpoint WebSocket pour les notifications en temps réel"""
@@ -123,7 +143,7 @@ async def upload_document(
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Upload un document, extrait le texte et lance l'extraction DCE en arrière-plan"""
+    """Upload un document, extrait le texte, lance l'extraction DCE et crée les chunks CCTP en arrière-plan"""
     
     # Vérifier le type de fichier
     if file.content_type not in ALLOWED_TYPES:
@@ -173,9 +193,12 @@ async def upload_document(
     text_extracted = False
     text_preview = None
     dce_extraction_started = False
+    chunks_created = False
     
     try:
-        extracted_text = extract_text_from_file(file_path, file.content_type)
+        # Utiliser l'extraction avec pages pour les PDF, normale pour les autres
+        include_pages = file.content_type == "application/pdf"
+        extracted_text = extract_text_from_file(file_path, file.content_type, include_pages=include_pages)
         
         if extracted_text:
             # Créer l'entrée dans document_texts
@@ -203,6 +226,15 @@ async def upload_document(
             else:
                 print("Clé API OpenAI non configurée - extraction DCE désactivée")
             
+            # Lancer le découpage CCTP en arrière-plan (toujours activé)
+            background_tasks.add_task(
+                process_cctp_chunks_background,
+                db_document.id,
+                extracted_text,
+                db
+            )
+            chunks_created = True
+            
     except Exception as e:
         print(f"Erreur lors de l'extraction de texte: {e}")
         # L'extraction de texte échoue, mais on continue (le fichier est déjà sauvé)
@@ -216,7 +248,8 @@ async def upload_document(
         message="Fichier uploadé avec succès",
         text_extracted=text_extracted,
         text_preview=text_preview,
-        dce_extraction_started=dce_extraction_started
+        dce_extraction_started=dce_extraction_started,
+        chunks_created=chunks_created
     )
 
 @router.get("/", response_model=List[schemas.Document])
@@ -224,12 +257,32 @@ def get_documents(
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Récupérer la liste des documents de l'utilisateur"""
+    """Obtenir la liste des documents de l'utilisateur"""
     documents = db.query(models.Document).filter(
         models.Document.owner_id == current_user.id
     ).order_by(models.Document.upload_date.desc()).all()
     
     return documents
+
+@router.get("/{document_id}", response_model=schemas.Document)
+def get_document_by_id(
+    document_id: int,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Obtenir un document spécifique par son ID"""
+    document = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.owner_id == current_user.id
+    ).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document non trouvé"
+        )
+    
+    return document
 
 @router.get("/{document_id}/status")
 def get_document_extraction_status(
@@ -327,6 +380,15 @@ def delete_document(
             status_code=404,
             detail="Document non trouvé"
         )
+    
+    # 🗑️ Invalider le cache Q&A pour ce document
+    try:
+        deleted_cache_entries = redis_cache.invalidate_document_cache(document_id)
+        if deleted_cache_entries > 0:
+            print(f"🗑️ {deleted_cache_entries} entrées de cache Q&A supprimées pour le document {document_id}")
+    except Exception as e:
+        print(f"⚠️ Erreur lors de l'invalidation du cache: {e}")
+        # On continue même si l'invalidation du cache échoue
     
     # Supprimer le fichier physique
     try:
@@ -497,4 +559,341 @@ async def manual_dce_extraction(
         "message": "Extraction DCE lancée en arrière-plan",
         "document_id": document_id,
         "status": "pending"
-    } 
+    }
+
+@router.get("/{document_id}/chunks", response_model=List[schemas.DocumentChunk])
+def get_document_chunks_endpoint(
+    document_id: int,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Récupère tous les chunks d'un document"""
+    
+    # Vérifier que l'utilisateur est propriétaire du document
+    document = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.owner_id == current_user.id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document non trouvé")
+    
+    # Récupérer les chunks
+    chunks = get_document_chunks(document_id, db)
+    
+    return chunks
+
+@router.get("/{document_id}/chunks/lot/{lot_name}", response_model=List[schemas.DocumentChunk])
+def get_chunks_by_lot_endpoint(
+    document_id: int,
+    lot_name: str,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Récupère les chunks d'un lot spécifique"""
+    
+    # Vérifier que l'utilisateur est propriétaire du document
+    document = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.owner_id == current_user.id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document non trouvé")
+    
+    # Récupérer les chunks du lot
+    chunks = get_chunks_by_lot(document_id, lot_name, db)
+    
+    return chunks
+
+@router.get("/{document_id}/chunks/search/{search_term}", response_model=List[schemas.DocumentChunk])
+def search_chunks_endpoint(
+    document_id: int,
+    search_term: str,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Recherche dans le contenu des chunks d'un document"""
+    
+    # Vérifier que l'utilisateur est propriétaire du document
+    document = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.owner_id == current_user.id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document non trouvé")
+    
+    # Rechercher dans les chunks
+    chunks = search_chunks_by_content(document_id, search_term, db)
+    
+    return chunks
+
+@router.get("/chunks/stats")
+def get_chunks_stats(
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Récupère les statistiques des chunks pour l'utilisateur"""
+    
+    # Récupérer tous les documents de l'utilisateur
+    user_documents = db.query(models.Document).filter(
+        models.Document.owner_id == current_user.id
+    ).all()
+    
+    if not user_documents:
+        return {
+            "total_documents": 0,
+            "total_chunks": 0,
+            "chunks_by_document": [],
+            "lots_detected": []
+        }
+    
+    document_ids = [doc.id for doc in user_documents]
+    
+    # Statistiques globales
+    total_chunks = db.query(models.DocumentChunk).filter(
+        models.DocumentChunk.document_id.in_(document_ids)
+    ).count()
+    
+    # Chunks par document
+    chunks_by_doc = db.query(
+        models.Document.original_filename,
+        func.count(models.DocumentChunk.id).label('chunk_count')
+    ).join(
+        models.DocumentChunk, models.Document.id == models.DocumentChunk.document_id
+    ).filter(
+        models.Document.owner_id == current_user.id
+    ).group_by(
+        models.Document.id, models.Document.original_filename
+    ).all()
+    
+    # Lots détectés
+    lots_detected = db.query(
+        models.DocumentChunk.lot,
+        func.count(models.DocumentChunk.id).label('chunk_count')
+    ).filter(
+        models.DocumentChunk.document_id.in_(document_ids),
+        models.DocumentChunk.lot.isnot(None)
+    ).group_by(
+        models.DocumentChunk.lot
+    ).all()
+    
+    return {
+        "total_documents": len(user_documents),
+        "total_chunks": total_chunks,
+        "chunks_by_document": [
+            {"filename": filename, "chunk_count": count}
+            for filename, count in chunks_by_doc
+        ],
+        "lots_detected": [
+            {"lot": lot, "chunk_count": count}
+            for lot, count in lots_detected
+        ]
+    }
+
+# ============ NOUVEAUX ENDPOINTS EMBEDDINGS ============
+
+@router.get("/embeddings/stats")
+def get_embeddings_stats(
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Récupère les statistiques des embeddings"""
+    
+    # Vérifier les prérequis
+    requirements = check_embedding_requirements()
+    
+    # Récupérer les statistiques
+    stats = get_embedding_stats(db)
+    
+    return {
+        "requirements": requirements,
+        "stats": stats,
+        "job_status": get_embedding_job_status()
+    }
+
+@router.post("/embeddings/generate")
+async def generate_embeddings_job(
+    background_tasks: BackgroundTasks,
+    model: str = Query(default="text-embedding-3-large", description="Modèle OpenAI à utiliser"),
+    batch_size: int = Query(default=5, ge=1, le=20, description="Taille des batches"),
+    max_chunks: int = Query(default=None, ge=1, description="Limite maximale de chunks"),
+    force_reprocess: bool = Query(default=False, description="Force le retraitement"),
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Lance un job de génération d'embeddings en arrière-plan"""
+    
+    # Vérifier les prérequis
+    requirements = check_embedding_requirements()
+    if not requirements["all_requirements_met"]:
+        missing = [k for k, v in requirements.items() if not v and k != "all_requirements_met"]
+        raise HTTPException(
+            status_code=503,
+            detail=f"Prérequis manquants pour les embeddings: {', '.join(missing)}"
+        )
+    
+    # Lancer le job en arrière-plan
+    async def run_embedding_job():
+        try:
+            result = await schedule_embedding_job(
+                db=db,
+                model=model,
+                batch_size=batch_size,
+                max_chunks=max_chunks,
+                force_reprocess=force_reprocess
+            )
+            print(f"✅ Job d'embedding terminé: {result}")
+        except Exception as e:
+            print(f"❌ Erreur job d'embedding: {e}")
+    
+    background_tasks.add_task(run_embedding_job)
+    
+    return {
+        "message": "Job de génération d'embeddings lancé en arrière-plan",
+        "parameters": {
+            "model": model,
+            "batch_size": batch_size,
+            "max_chunks": max_chunks,
+            "force_reprocess": force_reprocess
+        }
+    }
+
+@router.get("/embeddings/job-status")
+def get_embeddings_job_status(
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Récupère le statut du job d'embeddings en cours"""
+    return get_embedding_job_status()
+
+@router.post("/chunks/search-semantic")
+async def semantic_search_chunks(
+    query: str = Query(..., description="Texte de recherche"),
+    document_id: int = Query(default=None, description="ID du document (optionnel)"),
+    limit: int = Query(default=10, ge=1, le=50, description="Nombre de résultats"),
+    similarity_threshold: float = Query(default=0.7, ge=0.0, le=1.0, description="Seuil de similarité"),
+    model: str = Query(default="text-embedding-3-large", description="Modèle d'embedding"),
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Recherche sémantique dans les chunks"""
+    
+    # Vérifier les prérequis
+    requirements = check_embedding_requirements()
+    if not requirements["all_requirements_met"]:
+        raise HTTPException(
+            status_code=503,
+            detail="Service de recherche sémantique non disponible"
+        )
+    
+    # Si un document spécifique est demandé, vérifier les permissions
+    if document_id:
+        document = db.query(models.Document).filter(
+            models.Document.id == document_id,
+            models.Document.owner_id == current_user.id
+        ).first()
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document non trouvé")
+    
+    try:
+        # Effectuer la recherche sémantique
+        results = await search_similar_chunks(
+            query_text=query,
+            db=db,
+            document_id=document_id,
+            limit=limit,
+            similarity_threshold=similarity_threshold,
+            model=model
+        )
+        
+        # Formater les résultats
+        formatted_results = []
+        for chunk, similarity in results:
+            # Vérifier que l'utilisateur a accès au document du chunk
+            if chunk.document.owner_id != current_user.id:
+                continue
+            
+            formatted_results.append({
+                "chunk_id": chunk.id,
+                "document_id": chunk.document_id,
+                "document_name": chunk.document.original_filename,
+                "lot": chunk.lot,
+                "article": chunk.article,
+                "text": chunk.text[:500] + "..." if len(chunk.text) > 500 else chunk.text,
+                "text_length": len(chunk.text),
+                "page_number": chunk.page_number,
+                "similarity_score": round(similarity, 4),
+                "created_at": chunk.created_at
+            })
+        
+        return {
+            "query": query,
+            "results_count": len(formatted_results),
+            "parameters": {
+                "document_id": document_id,
+                "limit": limit,
+                "similarity_threshold": similarity_threshold,
+                "model": model
+            },
+            "results": formatted_results
+        }
+        
+    except Exception as e:
+        print(f"❌ Erreur recherche sémantique: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur lors de la recherche sémantique: {str(e)}"
+        )
+
+@router.post("/regenerate-embeddings/{document_id}")
+async def regenerate_document_embeddings(
+    document_id: int,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint temporaire pour régénérer les embeddings d'un document
+    """
+    # Vérifier que le document appartient à l'utilisateur
+    document = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.owner_id == current_user.id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document non trouvé")
+    
+    try:
+        # Supprimer les anciens embeddings
+        chunks = db.query(models.DocumentChunk).filter(
+            models.DocumentChunk.document_id == document_id
+        ).all()
+        
+        for chunk in chunks:
+            chunk.embedding = None
+            chunk.embedding_model = None
+            chunk.embedding_created_at = None
+        
+        db.commit()
+        
+        # Régénérer les embeddings
+        stats = await process_batch_embeddings(
+            db=db,
+            model='text-embedding-3-large',
+            batch_size=5,
+            max_chunks=None  # Traiter tous les chunks
+        )
+        
+        return {
+            "success": True,
+            "message": f"Embeddings régénérés pour le document {document.original_filename}",
+            "stats": stats
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Erreur lors de la régénération: {str(e)}"
+        } 

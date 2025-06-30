@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { authService, userService } from '../utils/api';
+import QuickQA from '../components/QuickQA';
 
 function Dashboard() {
   const [user, setUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setLoading(true);
-        
         // Récupérer le profil utilisateur
         const userProfile = await authService.getProfile();
         setUser(userProfile);
@@ -88,6 +87,23 @@ function Dashboard() {
             </div>
           </Link>
 
+          <Link
+            to="/qa"
+            className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border-l-4 border-orange-500"
+          >
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-8 w-8 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-gray-900">Assistant Q&A</h3>
+                <p className="text-sm text-gray-500">Questions intelligentes sur vos documents</p>
+              </div>
+            </div>
+          </Link>
+
           <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -101,53 +117,45 @@ function Dashboard() {
               </div>
             </div>
           </div>
-
-          <div className="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <h3 className="text-lg font-medium text-gray-900">Statut</h3>
-                <p className="text-sm text-blue-600">Compte actif</p>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Profil utilisateur */}
-        <div className="bg-white overflow-hidden shadow rounded-lg mb-8">
-          <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Mon Profil</h2>
-            {user && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <p className="mt-1 text-sm text-gray-900">{user.email}</p>
+        {/* Layout en deux colonnes */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Profil utilisateur */}
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Mon Profil</h2>
+              {user && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <p className="mt-1 text-sm text-gray-900">{user.email}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Nom d'utilisateur</label>
+                    <p className="mt-1 text-sm text-gray-900">{user.username}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Statut</label>
+                    <span className={`mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {user.is_active ? 'Actif' : 'Inactif'}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Membre depuis</label>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {new Date(user.created_at).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Nom d'utilisateur</label>
-                  <p className="mt-1 text-sm text-gray-900">{user.username}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Statut</label>
-                  <span className={`mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
-                    {user.is_active ? 'Actif' : 'Inactif'}
-                  </span>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Membre depuis</label>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {new Date(user.created_at).toLocaleDateString('fr-FR')}
-                  </p>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+
+          {/* Assistant Q&A Rapide */}
+          <QuickQA />
         </div>
 
         {/* Liste des utilisateurs */}

@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON, Float, Enum
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON, Float, Enum, LargeBinary
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -21,8 +21,9 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relation avec les documents
+    # Relations
     documents = relationship("Document", back_populates="owner")
+    qa_history = relationship("QAHistory", back_populates="user")
 
 class Document(Base):
     __tablename__ = "documents"
@@ -39,8 +40,10 @@ class Document(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="documents")
     
-    # Relation avec les extractions
+    # Relations avec les extractions, chunks et historique Q&A
     extractions = relationship("Extraction", back_populates="document")
+    chunks = relationship("DocumentChunk", back_populates="document")
+    qa_history = relationship("QAHistory", back_populates="document")
 
 class DocumentText(Base):
     __tablename__ = "document_texts"
@@ -49,6 +52,23 @@ class DocumentText(Base):
     filename = Column(String, nullable=False)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    lot = Column(String, nullable=True)  # Ex: "Lot 02 - Gros œuvre"
+    article = Column(String, nullable=True)  # Ex: "Article 2.1"
+    text = Column(Text, nullable=False)  # Contenu du chunk
+    page_number = Column(Integer, nullable=True)  # Numéro de page
+    embedding = Column(LargeBinary, nullable=True)  # Vecteur d'embedding (format binaire)
+    embedding_model = Column(String, nullable=True)  # Modèle utilisé pour l'embedding
+    embedding_created_at = Column(DateTime(timezone=True), nullable=True)  # Date de création de l'embedding
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relation avec le document
+    document = relationship("Document", back_populates="chunks")
 
 class Extraction(Base):
     __tablename__ = "extractions"
@@ -72,4 +92,24 @@ class Extraction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relation avec le document
-    document = relationship("Document", back_populates="extractions") 
+    document = relationship("Document", back_populates="extractions")
+
+class QAHistory(Base):
+    __tablename__ = "qa_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=True)  # Peut être null si pas de réponse générée
+    confidence = Column(String, nullable=True)  # "haute", "moyenne", "faible"
+    processing_time_ms = Column(Integer, nullable=True)
+    chunks_returned = Column(Integer, nullable=True)
+    similarity_threshold = Column(Float, nullable=True)
+    embedding_model = Column(String, nullable=True)  # Renommé de model_used
+    from_cache = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relations
+    user = relationship("User", back_populates="qa_history")
+    document = relationship("Document", back_populates="qa_history") 

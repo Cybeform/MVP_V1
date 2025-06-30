@@ -5,6 +5,7 @@ const DocumentsList = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [regeneratingEmbeddings, setRegeneratingEmbeddings] = useState(new Set());
 
   useEffect(() => {
     fetchDocuments();
@@ -55,6 +56,37 @@ const DocumentsList = () => {
     }
   };
 
+  const handleRegenerateEmbeddings = async (documentId, filename) => {
+    if (!window.confirm(`Êtes-vous sûr de vouloir régénérer les embeddings pour "${filename}" ?\n\nCela peut prendre quelques minutes et améliorera la qualité des réponses Q&A.`)) {
+      return;
+    }
+
+    try {
+      setRegeneratingEmbeddings(prev => new Set([...prev, documentId]));
+      
+      const result = await documentService.regenerateEmbeddings(documentId);
+      
+      if (result.success) {
+        setError('');
+        // Afficher un message de succès temporaire
+        const successMessage = `✅ Embeddings régénérés avec succès pour "${filename}"`;
+        setError(successMessage);
+        setTimeout(() => setError(''), 5000);
+      } else {
+        setError(`❌ Erreur lors de la régénération: ${result.message}`);
+      }
+    } catch (error) {
+      setError(`Erreur lors de la régénération des embeddings: ${error.response?.data?.detail || error.message}`);
+      console.error('Regenerate embeddings error:', error);
+    } finally {
+      setRegeneratingEmbeddings(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(documentId);
+        return newSet;
+      });
+    }
+  };
+
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -92,20 +124,30 @@ const DocumentsList = () => {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+        <div className={`mb-6 p-4 border rounded-md ${
+          error.startsWith('✅') 
+            ? 'bg-green-50 border-green-200 text-green-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
+              {error.startsWith('✅') ? (
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              )}
             </div>
             <div className="ml-3">
-              <p className="text-sm text-red-800">{error}</p>
+              <p className="text-sm">{error}</p>
             </div>
             <div className="ml-auto pl-3">
               <button
                 onClick={() => setError('')}
-                className="text-red-400 hover:text-red-600"
+                className={`${error.startsWith('✅') ? 'text-green-400 hover:text-green-600' : 'text-red-400 hover:text-red-600'}`}
               >
                 <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -150,6 +192,20 @@ const DocumentsList = () => {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleRegenerateEmbeddings(document.id, document.original_filename)}
+                    disabled={regeneratingEmbeddings.has(document.id)}
+                    className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Régénérer les embeddings (améliore la qualité Q&A)"
+                  >
+                    {regeneratingEmbeddings.has(document.id) ? (
+                      <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                    ) : (
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    )}
+                  </button>
                   <button
                     onClick={() => handleDownload(document.id, document.original_filename)}
                     className="p-2 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded-md transition-colors"

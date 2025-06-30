@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from . import models
 from .database import engine
-from .routes import auth, users, documents
+from .routes import auth, users, documents, qa
 
 # Charger les variables d'environnement depuis le fichier .env
 load_dotenv()
@@ -14,9 +14,11 @@ models.Base.metadata.create_all(bind=engine)
 
 # Créer l'application FastAPI
 app = FastAPI(
-    title="API d'authentification et gestion de documents",
-    description="Une API complète avec authentification JWT et upload de documents",
-    version="1.0.0"
+    title="CYBEFORM - Analyse DCE",
+    description="API pour l'analyse intelligente de documents DCE avec IA",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # Configuration CORS pour permettre les requêtes depuis le frontend
@@ -39,13 +41,34 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(documents.router)
+app.include_router(qa.router)
 
 @app.get("/")
 def read_root():
     """Route de base pour vérifier que l'API fonctionne"""
     openai_configured = "✅" if os.getenv("OPENAI_API_KEY") else "❌"
     return {
-        "message": "Bienvenue sur l'API d'authentification et gestion de documents!",
+        "message": "CYBEFORM API - Analyse DCE",
+        "version": "1.0.0",
+        "features": [
+            "Authentification JWT",
+            "Upload de documents (PDF, DOCX, XLSX)",
+            "Extraction intelligente DCE avec OpenAI",
+            "Découpage hiérarchique CCTP",
+            "Embeddings vectoriels",
+            "Recherche sémantique",
+            "Question-Answering intelligent"
+        ],
+        "docs": "/docs",
         "openai_configured": openai_configured,
         "extraction_dce_available": bool(os.getenv("OPENAI_API_KEY"))
+    }
+
+@app.get("/health")
+def health_check():
+    """Endpoint de vérification de santé"""
+    return {
+        "status": "healthy",
+        "database": "connected",
+        "openai_api": "configured" if os.getenv("OPENAI_API_KEY") else "not_configured"
     } 

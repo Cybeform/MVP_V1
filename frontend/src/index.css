@@ -1,3 +1,178 @@
 @tailwind base;
 @tailwind components;
-@tailwind utilities; 
+@tailwind utilities;
+
+:root {
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+}
+
+/* Configuration des couleurs primaires */
+.text-primary-600 {
+  color: var(--primary-600);
+}
+
+.bg-primary-600 {
+  background-color: var(--primary-600);
+}
+
+.bg-primary-700 {
+  background-color: var(--primary-700);
+}
+
+.border-primary-600 {
+  border-color: var(--primary-600);
+}
+
+.border-primary-500 {
+  border-color: var(--primary-500);
+}
+
+.hover\\:bg-primary-700:hover {
+  background-color: var(--primary-700);
+}
+
+.focus\\:ring-primary-500:focus {
+  --tw-ring-color: var(--primary-500);
+}
+
+/* Styles spécifiques pour react-pdf */
+.react-pdf__Document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.react-pdf__Page {
+  max-width: calc(100% - 2em);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  margin: 1em 0;
+}
+
+.react-pdf__Page__textContent {
+  display: none !important;
+}
+
+.react-pdf__Page__annotations {
+  display: none !important;
+}
+
+/* Styles pour la visionneuse PDF */
+.pdf-document {
+  width: 100%;
+  max-width: 100%;
+}
+
+.pdf-viewer-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-viewer-toolbar {
+  background-color: white;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.pdf-viewer-content {
+  flex: 1;
+  overflow: auto;
+  background-color: #f3f4f6;
+  padding: 1rem;
+}
+
+/* Amélioration du scrolling pour la visionneuse */
+.pdf-viewer-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pdf-viewer-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.pdf-viewer-content::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.pdf-viewer-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Styles pour les pages PDF actives */
+.pdf-page-active {
+  border: 2px solid #3b82f6 !important;
+  box-shadow: 0 0 0 1px #3b82f6, 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Animation pour le zoom */
+.react-pdf__Page {
+  transition: transform 0.2s ease-in-out;
+}
+
+/* Styles responsifs pour la visionneuse */
+@media (max-width: 768px) {
+  .pdf-viewer-toolbar {
+    padding: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .pdf-viewer-content {
+    padding: 0.5rem;
+  }
+  
+  .react-pdf__Page {
+    max-width: calc(100% - 1em);
+  }
+}
+
+/* Styles pour les boutons de la visionneuse */
+.pdf-viewer-button {
+  @apply px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.pdf-viewer-button-primary {
+  @apply px-3 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+/* Animation pour l'ouverture de la visionneuse */
+.pdf-viewer-enter {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.pdf-viewer-enter-active {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.pdf-viewer-exit {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.pdf-viewer-exit-active {
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 150ms ease-in, transform 150ms ease-in;
+} 
