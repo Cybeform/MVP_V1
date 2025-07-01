@@ -10,11 +10,16 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
+import ProjectDashboard from './pages/ProjectDashboard';
 import Upload from './pages/Upload';
 import Extractions from './pages/Extractions';
 import QAInterface from './components/QAInterface';
 import QAHistory from './components/QAHistory';
+
+// Pages spécifiques aux projets
+import ProjectDocuments from './pages/ProjectDocuments';
+import ProjectExtractions from './pages/ProjectExtractions';
+import ProjectQA from './pages/ProjectQA';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -75,10 +80,38 @@ function App() {
             path="/dashboard" 
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <ProjectDashboard />
               </ProtectedRoute>
             } 
           />
+          
+          {/* Routes spécifiques aux projets */}
+          <Route 
+            path="/project/:projectId/documents" 
+            element={
+              <ProtectedRoute>
+                <ProjectDocuments />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/project/:projectId/extractions" 
+            element={
+              <ProtectedRoute>
+                <ProjectExtractions />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/project/:projectId/qa" 
+            element={
+              <ProtectedRoute>
+                <ProjectQA />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* Routes générales */}
           <Route 
             path="/upload" 
             element={

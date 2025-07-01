@@ -55,16 +55,16 @@ def save_qa_to_history(
 async def ask_document_question(
     qa_request: schemas.QARequest,
     similarity_threshold: Optional[float] = Query(
-        default=0.6, 
+        default=0.5,  # Augmenté pour plus de précision 
         ge=0.0, 
         le=1.0, 
-        description="Seuil de similarité minimum (0.0 à 1.0)"
+        description="Seuil de similarité minimum (0.0 à 1.0) - Recommandé: 0.5 pour documents CCTP"
     ),
     chunks_limit: Optional[int] = Query(
-        default=6, 
+        default=10,  # Augmenté pour plus de contexte
         ge=1, 
-        le=20, 
-        description="Nombre maximum de chunks à retourner"
+        le=25,  # Augmenté la limite maximale
+        description="Nombre maximum de chunks à retourner (recommandé: 10 pour analyse approfondie)"
     ),
     model: str = Query(
         default="text-embedding-3-large", 
@@ -72,7 +72,7 @@ async def ask_document_question(
     ),
     generate_answer: bool = Query(
         default=True,
-        description="Génère une réponse avec GPT-4o basée sur les passages trouvés"
+        description="Génère une réponse intelligente avec GPT-4o basée sur les passages trouvés"
     ),
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
@@ -80,29 +80,42 @@ async def ask_document_question(
     """
     Pose une question sur un document spécifique et retourne les sections les plus pertinentes.
     
-    **Système de cache activé:**
+    **🚀 SYSTÈME OPTIMISÉ pour documents CCTP:**
+    - Recherche sémantique améliorée avec préprocessing des questions
+    - Paramètres par défaut optimisés pour le domaine BTP
+    - Réponses GPT-4o spécialisées avec expertise technique
+    - Recherche adaptative qui ajuste automatiquement les paramètres
+    
+    **💾 Système de cache activé:**
     - Les réponses sont mises en cache pendant 24h
     - Clé de cache basée sur: document_id + question + paramètres
     - Améliore considérablement les performances pour les questions répétées
     
-    **Historique automatique:**
+    **📊 Historique automatique:**
     - Toutes les questions et réponses sont automatiquement sauvegardées
     - Accessible via l'endpoint `/qa/history`
     
-    **Paramètres:**
+    **⚙️ Paramètres optimisés:**
     - `document_id`: ID du document à analyser
     - `question`: Question à poser sur le document
-    - `similarity_threshold`: Seuil de similarité minimum (défaut: 0.6)
-    - `chunks_limit`: Nombre de chunks à retourner (défaut: 6)
-    - `model`: Modèle d'embedding à utiliser
-    - `generate_answer`: Active la génération de réponse avec GPT-4o (défaut: True)
+    - `similarity_threshold`: Seuil de précision (défaut: 0.5 - optimisé pour CCTP)
+    - `chunks_limit`: Nombre de passages analysés (défaut: 10 - pour analyse approfondie)
+    - `model`: Modèle d'embedding à utiliser (text-embedding-3-large)
+    - `generate_answer`: Active la génération de réponse intelligente GPT-4o (défaut: True)
     
-    **Retour:**
-    - Liste des chunks les plus pertinents avec leurs métadonnées (lot, article, page)
-    - Scores de similarité pour chaque chunk
-    - Réponse générée par GPT-4o avec citations (si generate_answer=True)
-    - Temps de traitement et statistiques
+    **📋 Retour enrichi:**
+    - Liste des chunks les plus pertinents avec métadonnées techniques
+    - Scores de similarité interprétés
+    - Réponse générée par GPT-4o avec expertise BTP et citations précises
+    - Niveau de confiance calculé sur plusieurs facteurs
+    - Temps de traitement et statistiques détaillées
     - Flag `from_cache` pour indiquer si la réponse provient du cache
+    
+    **🎯 Spécialisations BTP:**
+    - Préprocessing des questions pour corriger l'orthographe et enrichir le vocabulaire technique
+    - Prompts GPT spécialisés pour les documents CCTP avec connaissance des normes DTU, NF
+    - Détection automatique des thèmes (matériaux, performances, contrôles, normes...)
+    - Citations enrichies avec extraction intelligente des passages pertinents
     """
     
     try:

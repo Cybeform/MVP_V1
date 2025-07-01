@@ -88,9 +88,14 @@ export const userService = {
 // Services documents
 export const documentService = {
   // Upload de fichier avec progression
-  uploadFile: async (file, onProgress) => {
+  uploadFile: async (file, onProgress, options = {}) => {
     const formData = new FormData();
     formData.append('file', file);
+    
+    // Ajouter le project_id si fourni
+    if (options.project_id) {
+      formData.append('project_id', options.project_id);
+    }
 
     const response = await api.post('/documents/upload', formData, {
       headers: {
@@ -513,4 +518,97 @@ export const qaHistoryService = {
   }
 };
 
-export default api; 
+export default api;
+
+// Services pour les projets
+export const projectService = {
+  // Créer un nouveau projet
+  createProject: async (projectData) => {
+    const response = await api.post('/projects/', projectData);
+    return response.data;
+  },
+
+  // Obtenir tous les projets de l'utilisateur
+  getProjects: async () => {
+    const response = await api.get('/projects/');
+    return response.data;
+  },
+
+  // Obtenir un projet spécifique
+  getProject: async (projectId) => {
+    const response = await api.get(`/projects/${projectId}`);
+    return response.data;
+  },
+
+  // Mettre à jour un projet
+  updateProject: async (projectId, updateData) => {
+    const response = await api.put(`/projects/${projectId}`, updateData);
+    return response.data;
+  },
+
+  // Supprimer un projet
+  deleteProject: async (projectId, force = false) => {
+    const url = force ? `/projects/${projectId}?force=true` : `/projects/${projectId}`;
+    const response = await api.delete(url);
+    return response.data;
+  },
+
+  // Obtenir les statistiques d'un projet
+  getProjectStats: async (projectId) => {
+    const response = await api.get(`/projects/${projectId}/stats`);
+    return response.data;
+  },
+
+  // Couleurs prédéfinies pour les projets
+  getProjectColors: () => [
+    { name: 'Bleu', value: '#3B82F6' },
+    { name: 'Vert', value: '#10B981' },
+    { name: 'Violet', value: '#8B5CF6' },
+    { name: 'Orange', value: '#F59E0B' },
+    { name: 'Rose', value: '#EC4899' },
+    { name: 'Rouge', value: '#EF4444' },
+    { name: 'Indigo', value: '#6366F1' },
+    { name: 'Cyan', value: '#06B6D4' },
+    { name: 'Emeraude', value: '#059669' },
+    { name: 'Amber', value: '#D97706' }
+  ],
+
+  // Formater l'affichage des statistiques
+  formatProjectStats: (stats) => {
+    return {
+      documentsCount: stats.documents_count || 0,
+      extractionsCount: stats.total_extractions || 0,
+      extractionsCompleted: stats.extractions_by_status?.completed || 0,
+      extractionsPending: stats.extractions_by_status?.pending || 0,
+      extractionsProcessing: stats.extractions_by_status?.processing || 0,
+      extractionsFailed: stats.extractions_by_status?.failed || 0,
+      lastActivity: stats.last_activity
+    };
+  },
+
+  // Valider les données d'un projet
+  validateProject: (projectData) => {
+    const errors = [];
+    
+    if (!projectData.name || !projectData.name.trim()) {
+      errors.push('Le nom du projet est requis');
+    }
+    
+    if (projectData.name && projectData.name.trim().length < 2) {
+      errors.push('Le nom du projet doit contenir au moins 2 caractères');
+    }
+    
+    if (projectData.name && projectData.name.trim().length > 100) {
+      errors.push('Le nom du projet ne peut pas dépasser 100 caractères');
+    }
+    
+    if (projectData.description && projectData.description.length > 500) {
+      errors.push('La description ne peut pas dépasser 500 caractères');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors: errors
+    };
+  }
+}; 

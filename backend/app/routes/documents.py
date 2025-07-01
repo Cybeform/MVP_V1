@@ -1,11 +1,11 @@
 import os
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks, WebSocket, WebSocketDisconnect, Query, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth
-from ..database import get_db
+from ..database import get_db, SessionLocal
 from ..text_extraction import extract_text_from_file, get_text_preview
 from ..dce_extraction import extract_dce_info_from_text_async, validate_extraction, websocket_manager
 from ..cctp_chunking import process_cctp_document, get_document_chunks, get_chunks_by_lot, search_chunks_by_content
@@ -35,6 +35,9 @@ async def process_dce_extraction_async(document_id: int, text: str, db: Session,
     """
     Traite l'extraction DCE en arrière-plan de manière asynchrone
     """
+    # Créer une nouvelle session pour ce processus asynchrone
+    async_db = SessionLocal()
+    
     extraction = None
     try:
         print(f"Début de l'extraction DCE pour le document {document_id}")
@@ -46,16 +49,16 @@ async def process_dce_extraction_async(document_id: int, text: str, db: Session,
             progress=0
         )
         
-        db.add(db_extraction)
-        db.commit()
-        db.refresh(db_extraction)
+        async_db.add(db_extraction)
+        async_db.commit()
+        async_db.refresh(db_extraction)
         extraction = db_extraction
         
         # Lancer l'extraction asynchrone
         extraction_data = await extract_dce_info_from_text_async(
             text, 
             db_extraction.id, 
-            db,
+            async_db,
             user_id
         )
         
@@ -79,15 +82,15 @@ async def process_dce_extraction_async(document_id: int, text: str, db: Session,
             db_extraction.progress = 100
             db_extraction.completed_at = func.now()
             
-            db.commit()
-            print(f"Extraction DCE terminée avec succès pour le document {document_id}")
+            async_db.commit()
+            print(f"✅ Extraction DCE terminée avec succès pour le document {document_id} - Statut: {db_extraction.status}")
         else:
             # Marquer comme échoué si pas de données valides
             db_extraction.status = ExtractionStatus.failed
             db_extraction.error_message = "Aucune information DCE valide extraite"
             db_extraction.completed_at = func.now()
-            db.commit()
-            print(f"Aucune information DCE valide extraite pour le document {document_id}")
+            async_db.commit()
+            print(f"❌ Aucune information DCE valide extraite pour le document {document_id}")
             
     except Exception as e:
         error_msg = f"Erreur lors de l'extraction DCE pour le document {document_id}: {e}"
@@ -97,7 +100,7 @@ async def process_dce_extraction_async(document_id: int, text: str, db: Session,
             extraction.status = ExtractionStatus.failed
             extraction.error_message = str(e)
             extraction.completed_at = func.now()
-            db.commit()
+            async_db.commit()
         
         # Notifier via WebSocket en cas d'erreur
         if user_id:
@@ -107,22 +110,31 @@ async def process_dce_extraction_async(document_id: int, text: str, db: Session,
                 "error": str(e),
                 "document_id": document_id
             })
+    finally:
+        # Fermer la session asynchrone
+        async_db.close()
 
 def process_cctp_chunks_background(document_id: int, text: str, db: Session):
     """
     Traite le découpage CCTP en arrière-plan
     """
+    # Créer une nouvelle session pour ce processus asynchrone
+    async_db = SessionLocal()
+    
     try:
         print(f"Début du découpage CCTP pour le document {document_id}")
         
         # Traiter le document pour créer les chunks
-        chunks = process_cctp_document(text, document_id, db)
+        chunks = process_cctp_document(text, document_id, async_db)
         
-        print(f"Découpage CCTP terminé: {len(chunks)} chunks créés pour le document {document_id}")
+        print(f"✅ Découpage CCTP terminé: {len(chunks)} chunks créés pour le document {document_id}")
         
     except Exception as e:
         error_msg = f"Erreur lors du découpage CCTP pour le document {document_id}: {e}"
         print(error_msg)
+    finally:
+        # Fermer la session asynchrone
+        async_db.close()
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -140,6 +152,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    project_id: int = Form(None),  # Paramètre optionnel
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -159,6 +172,40 @@ async def upload_document(
             status_code=400,
             detail="Fichier trop volumineux. Taille maximale: 10MB"
         )
+    
+    # Gérer le project_id
+    if project_id:
+        # Vérifier que le projet existe et appartient à l'utilisateur
+        project = db.query(models.Project).filter(
+            models.Project.id == project_id,
+            models.Project.owner_id == current_user.id
+        ).first()
+        
+        if not project:
+            raise HTTPException(
+                status_code=404,
+                detail="Projet non trouvé ou vous n'y avez pas accès"
+            )
+    else:
+        # Créer ou récupérer un projet par défaut pour l'utilisateur
+        default_project = db.query(models.Project).filter(
+            models.Project.owner_id == current_user.id,
+            models.Project.name == "Documents généraux"
+        ).first()
+        
+        if not default_project:
+            # Créer un projet par défaut
+            default_project = models.Project(
+                name="Documents généraux",
+                description="Projet par défaut pour les documents uploadés sans projet spécifique",
+                color="#6B7280",  # Gris
+                owner_id=current_user.id
+            )
+            db.add(default_project)
+            db.commit()
+            db.refresh(default_project)
+        
+        project_id = default_project.id
     
     # Générer un nom de fichier unique
     file_extension = ALLOWED_TYPES[file.content_type]
@@ -182,7 +229,8 @@ async def upload_document(
         file_size=len(content),
         file_type=file.content_type,
         file_path=file_path,
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        project_id=project_id  # Maintenant inclus
     )
     
     db.add(db_document)

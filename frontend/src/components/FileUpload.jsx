@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { documentService, authService, websocketService } from '../utils/api';
 import ExtractionProgress from './ExtractionProgress';
 
-const FileUpload = () => {
+const FileUpload = ({ selectedProject, onFileUploaded }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -64,9 +64,15 @@ const FileUpload = () => {
       setError('');
       setUploadProgress(0);
 
+      // Préparer les options d'upload
+      const uploadOptions = {};
+      if (selectedProject) {
+        uploadOptions.project_id = selectedProject.id;
+      }
+
       const result = await documentService.uploadFile(file, (progress) => {
         setUploadProgress(progress);
-      });
+      }, uploadOptions);
       
       const uploadedFile = {
         id: result.id,
@@ -74,10 +80,16 @@ const FileUpload = () => {
         size: file.size,
         type: file.type,
         uploadedAt: new Date().toISOString(),
+        project_id: selectedProject?.id,
         ...result
       };
 
       setUploadedFiles(prev => [...prev, uploadedFile]);
+
+      // Appeler le callback si fourni
+      if (onFileUploaded) {
+        onFileUploaded(uploadedFile);
+      }
 
       // Si une extraction DCE a été lancée, l'ajouter aux extractions actives
       if (result.dce_extraction_started) {
@@ -207,10 +219,25 @@ const FileUpload = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload de Documents</h2>
-        <p className="text-gray-600">
+        {selectedProject ? (
+          <div className="flex items-center space-x-3 mb-3">
+            <div 
+              className="w-4 h-4 rounded-full"
+              style={{ backgroundColor: selectedProject.color }}
+            ></div>
+            <p className="text-gray-600">
+              Uploading dans le projet : <span className="font-medium text-gray-900">{selectedProject.name}</span>
+            </p>
+          </div>
+        ) : (
+          <p className="text-gray-600 mb-3">
+            Aucun projet sélectionné - les fichiers seront uploadés sans association de projet
+          </p>
+        )}
+        <p className="text-gray-500 text-sm">
           Glissez-déposez vos fichiers ou cliquez pour sélectionner (PDF, DOCX, XLSX - max 10MB)
         </p>
       </div>

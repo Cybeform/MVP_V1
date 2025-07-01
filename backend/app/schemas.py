@@ -54,6 +54,7 @@ class Document(DocumentBase):
     filename: str
     upload_date: datetime
     owner_id: int
+    project_id: int
 
     class Config:
         from_attributes = True
@@ -273,4 +274,49 @@ class QAHistoryResponse(BaseModel):
     page: int
     per_page: int
     total_pages: int
-    history: List[QAHistory] 
+    history: List[QAHistory]
+
+# Schémas pour les projets
+class ProjectBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    color: Optional[str] = "#3B82F6"
+
+class ProjectCreate(ProjectBase):
+    pass
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+class Project(ProjectBase):
+    id: int
+    owner_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class ProjectWithStats(Project):
+    documents_count: int
+    extractions_count: int
+    last_activity: Optional[datetime] = None
+
+# Mise à jour des schémas existants pour inclure project_id
+class DocumentCreateWithProject(DocumentBase):
+    filename: str
+    file_path: str
+    project_id: int
+
+class DocumentWithProject(DocumentBase):
+    id: int
+    filename: str
+    upload_date: datetime
+    owner_id: int
+    project_id: int
+    project_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True 

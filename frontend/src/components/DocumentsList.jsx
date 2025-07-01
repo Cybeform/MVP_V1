@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react';
 import { documentService } from '../utils/api';
 
-const DocumentsList = () => {
+const DocumentsList = ({ documents: propDocuments, selectedProject, showTitle = true, showRefresh = true }) => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [regeneratingEmbeddings, setRegeneratingEmbeddings] = useState(new Set());
 
+  // Utiliser les documents fournis en props ou charger depuis l'API
+  const usingPropsDocuments = propDocuments !== undefined;
+
   useEffect(() => {
-    fetchDocuments();
-  }, []);
+    if (usingPropsDocuments) {
+      setDocuments(propDocuments);
+      setLoading(false);
+    } else {
+      fetchDocuments();
+    }
+  }, [propDocuments, usingPropsDocuments]);
 
   const fetchDocuments = async () => {
     try {
@@ -112,16 +120,22 @@ const DocumentsList = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Mes Documents</h2>
-        <button
-          onClick={fetchDocuments}
-          className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
-        >
-          Actualiser
-        </button>
-      </div>
+    <div className="max-w-4xl mx-auto">
+      {showTitle && (
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {selectedProject ? `Documents - ${selectedProject.name}` : 'Mes Documents'}
+          </h2>
+          {showRefresh && !usingPropsDocuments && (
+            <button
+              onClick={fetchDocuments}
+              className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
+            >
+              Actualiser
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className={`mb-6 p-4 border rounded-md ${
@@ -164,7 +178,12 @@ const DocumentsList = () => {
             <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun document</h3>
-          <p className="mt-1 text-sm text-gray-500">Commencez par uploader votre premier document.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {selectedProject 
+              ? `Ce projet ne contient aucun document.` 
+              : 'Commencez par uploader votre premier document.'
+            }
+          </p>
         </div>
       ) : (
         <div className="space-y-4">

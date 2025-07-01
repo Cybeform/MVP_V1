@@ -22,8 +22,26 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relations
+    projects = relationship("Project", back_populates="owner")
     documents = relationship("Document", back_populates="owner")
     qa_history = relationship("QAHistory", back_populates="user")
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    color = Column(String, default="#3B82F6")  # Couleur pour l'UI (hex)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Clé étrangère vers l'utilisateur
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Relations
+    owner = relationship("User", back_populates="projects")
+    documents = relationship("Document", back_populates="project")
 
 class Document(Base):
     __tablename__ = "documents"
@@ -36,11 +54,13 @@ class Document(Base):
     file_path = Column(String, nullable=False)
     upload_date = Column(DateTime(timezone=True), server_default=func.now())
     
-    # Clé étrangère vers l'utilisateur
+    # Clés étrangères
     owner_id = Column(Integer, ForeignKey("users.id"))
-    owner = relationship("User", back_populates="documents")
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     
-    # Relations avec les extractions, chunks et historique Q&A
+    # Relations
+    owner = relationship("User", back_populates="documents")
+    project = relationship("Project", back_populates="documents")
     extractions = relationship("Extraction", back_populates="document")
     chunks = relationship("DocumentChunk", back_populates="document")
     qa_history = relationship("QAHistory", back_populates="document")

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from . import models
 from .database import engine
-from .routes import auth, users, documents, qa
+from .routes import auth, users, documents, qa, projects
 
 # Charger les variables d'environnement depuis le fichier .env
 load_dotenv()
@@ -40,6 +40,7 @@ app.add_middleware(
 # Inclure les routes
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(projects.router)
 app.include_router(documents.router)
 app.include_router(qa.router)
 
